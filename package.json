@@ -1,0 +1,20 @@
+{
+  "name": "nodejs",
+  "version": "1.0.0",
+  "description": "Log Generator and Analyzer System",
+  "main": "logger.js",
+  "scripts": {
+    "generate": "node generator.js",
+    "analyze": "node analyzer.js",
+    "analyze:success": "node analyzer.js --type=SUCCESS",
+    "analyze:error": "node analyzer.js --type=ERROR",
+    "analyze:warning": "node analyzer.js --type=WARNING",
+    "analyze:info": "node analyzer.js --type=INFO"
+  },
+  "keywords": ["logging", "node", "cli"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  }
+}
