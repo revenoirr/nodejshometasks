@@ -2,6 +2,10 @@
   <div id="app">
     <header>
       <h1>📝 Article Management System</h1>
+      <div class="connection-status">
+        <span :class="['status-indicator', wsConnected ? 'connected' : 'disconnected']"></span>
+        {{ wsConnected ? 'Connected' : 'Disconnected' }}
+      </div>
     </header>
 
     <main>
@@ -40,6 +44,8 @@
         @back="currentView = 'list'"
         @edit="editArticle"
         @delete="confirmDelete"
+        @delete-attachment="confirmDeleteAttachment"
+        @upload-file="showUploadModal = true"
       />
 
       <ArticleForm
@@ -56,6 +62,24 @@
         @confirm="deleteArticle"
         @cancel="showDeleteModal = false"
       />
+
+      <DeleteModal
+        :show="showDeleteAttachmentModal"
+        @confirm="deleteAttachment"
+        @cancel="showDeleteAttachmentModal = false"
+      />
+
+      <UploadModal
+        :show="showUploadModal"
+        :uploading="uploading"
+        @upload="uploadFile"
+        @cancel="showUploadModal = false"
+      />
+
+      <NotificationToast 
+        :notifications="notifications"
+        @remove="removeNotification"
+      />
     </main>
   </div>
 </template>
@@ -65,8 +89,11 @@ import ArticleList from './components/ArticleList.vue';
 import ArticleView from './components/ArticleView.vue';
 import ArticleForm from './components/ArticleForm.vue';
 import DeleteModal from './components/DeleteModal.vue';
+import UploadModal from './components/UploadModal.vue';
+import NotificationToast from './components/NotificationToast.vue';
 
 const API_URL = 'http://localhost:3000';
+const WS_URL = 'ws://localhost:3000';
 
 export default {
   name: 'App',
@@ -74,7 +101,9 @@ export default {
     ArticleList,
     ArticleView,
     ArticleForm,
-    DeleteModal
+    DeleteModal,
+    UploadModal,
+    NotificationToast
   },
   data() {
     return {
@@ -87,20 +116,101 @@ export default {
       },
       loading: false,
       submitting: false,
+      uploading: false,
       alert: {
         show: false,
         message: '',
         type: 'success'
       },
       showDeleteModal: false,
+      showDeleteAttachmentModal: false,
+      showUploadModal: false,
       articleToDelete: null,
-      editingId: null
+      attachmentToDelete: null,
+      editingId: null,
+      ws: null,
+      wsConnected: false,
+      notifications: []
     };
   },
   mounted() {
     this.fetchArticles();
+    this.connectWebSocket();
+  },
+  beforeUnmount() {
+    if (this.ws) {
+      this.ws.close();
+    }
   },
   methods: {
+    connectWebSocket() {
+      try {
+        this.ws = new WebSocket(WS_URL);
+
+        this.ws.onopen = () => {
+          console.log('WebSocket connected');
+          this.wsConnected = true;
+        };
+
+        this.ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log('WebSocket message:', data);
+            
+            if (data.type !== 'connection') {
+              this.addNotification(data);
+              if (this.currentView === 'list' && 
+                  ['article_created', 'article_deleted'].includes(data.type)) {
+                this.fetchArticles();
+              }
+              if (this.currentView === 'view' && 
+                  this.selectedArticle && 
+                  data.data && 
+                  data.data.articleId === this.selectedArticle.id) {
+                this.viewArticle(this.selectedArticle.id);
+              }
+            }
+          } catch (err) {
+            console.error('Error parsing WebSocket message:', err);
+          }
+        };
+
+        this.ws.onclose = () => {
+          console.log('WebSocket disconnected');
+          this.wsConnected = false;
+          setTimeout(() => this.connectWebSocket(), 3000);
+        };
+
+        this.ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          this.wsConnected = false;
+        };
+      } catch (err) {
+        console.error('Failed to connect WebSocket:', err);
+      }
+    },
+
+    addNotification(data) {
+      const notification = {
+        id: Date.now() + Math.random(),
+        type: data.type,
+        message: data.message,
+        timestamp: data.timestamp
+      };
+      this.notifications.push(notification);
+      
+      setTimeout(() => {
+        this.removeNotification(notification.id);
+      }, 5000);
+    },
+
+    removeNotification(id) {
+      const index = this.notifications.findIndex(n => n.id === id);
+      if (index !== -1) {
+        this.notifications.splice(index, 1);
+      }
+    },
+
     async fetchArticles() {
       this.loading = true;
       try {
@@ -222,6 +332,70 @@ export default {
         this.showAlert(error.message, 'error');
       }
     },
+
+    // File Upload Methods
+    async uploadFile(file) {
+      if (!this.selectedArticle) return;
+
+      this.uploading = true;
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(
+          `${API_URL}/articles/${this.selectedArticle.id}/attachments`,
+          {
+            method: 'POST',
+            body: formData
+          }
+        );
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to upload file');
+        }
+
+        this.showAlert('File uploaded successfully', 'success');
+        this.showUploadModal = false;
+        
+        // Refresh article to show new attachment
+        await this.viewArticle(this.selectedArticle.id);
+      } catch (error) {
+        this.showAlert(error.message, 'error');
+      } finally {
+        this.uploading = false;
+      }
+    },
+
+    confirmDeleteAttachment(attachmentId) {
+      this.attachmentToDelete = attachmentId;
+      this.showDeleteAttachmentModal = true;
+    },
+
+    async deleteAttachment() {
+      if (!this.selectedArticle || !this.attachmentToDelete) return;
+
+      try {
+        const response = await fetch(
+          `${API_URL}/articles/${this.selectedArticle.id}/attachments/${this.attachmentToDelete}`,
+          { method: 'DELETE' }
+        );
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to delete attachment');
+        }
+
+        this.showAlert('Attachment deleted successfully', 'success');
+        this.showDeleteAttachmentModal = false;
+        this.attachmentToDelete = null;
+        
+        // Refresh article
+        await this.viewArticle(this.selectedArticle.id);
+      } catch (error) {
+        this.showAlert(error.message, 'error');
+      }
+    },
     
     cancelForm() {
       this.currentView = 'list';
@@ -266,11 +440,51 @@ header {
   color: white;
   margin-bottom: 40px;
   width: 100%;
+  position: relative;
 }
 
 header h1 {
   font-size: 2.5rem;
   text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+}
+
+.connection-status {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.2);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  backdrop-filter: blur(10px);
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.status-indicator.connected {
+  background: #28a745;
+}
+
+.status-indicator.disconnected {
+  background: #dc3545;
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 main {
@@ -331,5 +545,13 @@ main {
   background: #f8d7da;
   color: #721c24;
   border: 1px solid #f5c6cb;
+}
+
+@media (max-width: 768px) {
+  .connection-status {
+    position: static;
+    margin-top: 15px;
+    justify-content: center;
+  }
 }
 </style>

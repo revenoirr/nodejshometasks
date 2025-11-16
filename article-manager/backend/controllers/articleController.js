@@ -1,4 +1,11 @@
 const articleService = require('../services/articleService');
+const { 
+  notifyArticleCreated, 
+  notifyArticleUpdated, 
+  notifyArticleDeleted,
+  notifyFileAttached,
+  notifyFileDeleted
+} = require('../websocket/websocketServer');
 
 const getAllArticles = async (req, res) => {
   try {
@@ -30,6 +37,9 @@ const createArticle = async (req, res) => {
   try {
     const { title, content } = req.body;
     const result = await articleService.createArticle(title, content);
+    
+    notifyArticleCreated({ id: result.id, title: result.title });
+    
     res.status(201).json(result);
   } catch (err) {
     console.error('Error creating article:', err);
@@ -44,6 +54,9 @@ const updateArticle = async (req, res) => {
   try {
     const { title, content } = req.body;
     const result = await articleService.updateArticle(req.params.id, title, content);
+    
+    notifyArticleUpdated({ id: result.id, title: result.title });
+    
     res.json(result);
   } catch (err) {
     console.error('Error updating article:', err);
@@ -56,7 +69,10 @@ const updateArticle = async (req, res) => {
 
 const deleteArticle = async (req, res) => {
   try {
-    await articleService.deleteArticle(req.params.id);
+    const result = await articleService.deleteArticle(req.params.id);
+    
+    notifyArticleDeleted(req.params.id, result.title);
+    
     res.json({ message: 'Article deleted successfully' });
   } catch (err) {
     console.error('Error deleting article:', err);
@@ -67,10 +83,48 @@ const deleteArticle = async (req, res) => {
   }
 };
 
+const uploadAttachment = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const result = await articleService.addAttachment(req.params.id, req.file);
+    
+    notifyFileAttached(req.params.id, result.attachment.originalName, result.title);
+    
+    res.status(201).json(result);
+  } catch (err) {
+    console.error('Error uploading attachment:', err);
+    if (err.message === 'Article not found') {
+      return res.status(404).json({ error: err.message });
+    }
+    res.status(500).json({ error: 'Failed to upload attachment' });
+  }
+};
+
+const deleteAttachment = async (req, res) => {
+  try {
+    const result = await articleService.deleteAttachment(req.params.id, req.params.attachmentId);
+    
+    notifyFileDeleted(req.params.id, result.filename, result.title);
+    
+    res.json({ message: 'Attachment deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting attachment:', err);
+    if (err.message === 'Article not found' || err.message === 'Attachment not found') {
+      return res.status(404).json({ error: err.message });
+    }
+    res.status(500).json({ error: 'Failed to delete attachment' });
+  }
+};
+
 module.exports = {
   getAllArticles,
   getArticleById,
   createArticle,
   updateArticle,
-  deleteArticle
+  deleteArticle,
+  uploadAttachment,
+  deleteAttachment
 };

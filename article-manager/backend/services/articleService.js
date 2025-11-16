@@ -14,7 +14,8 @@ const getAllArticles = async () => {
       return {
         id: file.replace('.json', ''),
         title: article.title,
-        createdAt: article.createdAt
+        createdAt: article.createdAt,
+        attachments: article.attachments || []
       };
     })
   );
@@ -52,6 +53,7 @@ const createArticle = async (title, content) => {
   const article = {
     title,
     content,
+    attachments: [],
     createdAt: new Date().toISOString()
   };
 
@@ -59,6 +61,7 @@ const createArticle = async (title, content) => {
   
   return { 
     id: filename.replace('.json', ''),
+    title,
     message: 'Article created successfully' 
   };
 };
@@ -79,6 +82,7 @@ const updateArticle = async (id, title, content) => {
   const updatedArticle = {
     title,
     content,
+    attachments: existingArticle.attachments || [],
     createdAt: existingArticle.createdAt,
     updatedAt: new Date().toISOString()
   };
@@ -87,11 +91,40 @@ const updateArticle = async (id, title, content) => {
   
   return { 
     id,
+    title,
     message: 'Article updated successfully' 
   };
 };
 
 const deleteArticle = async (id) => {
+  const filename = `${id}.json`;
+  const filepath = path.join(DATA_DIR, filename);
+
+  let article;
+  try {
+    const content = await fs.readFile(filepath, 'utf-8');
+    article = JSON.parse(content);
+  } catch {
+    throw new Error('Article not found');
+  }
+
+  // Delete all attachments
+  if (article.attachments && article.attachments.length > 0) {
+    for (const attachment of article.attachments) {
+      const attachmentPath = path.join(config.uploadsDirectory, attachment.filename);
+      try {
+        await fs.unlink(attachmentPath);
+      } catch (err) {
+        console.error(`Failed to delete attachment: ${attachment.filename}`);
+      }
+    }
+  }
+
+  await fs.unlink(filepath);
+  return { title: article.title };
+};
+
+const addAttachment = async (id, fileInfo) => {
   const filename = `${id}.json`;
   const filepath = path.join(DATA_DIR, filename);
 
@@ -101,7 +134,71 @@ const deleteArticle = async (id) => {
     throw new Error('Article not found');
   }
 
-  await fs.unlink(filepath);
+  const content = await fs.readFile(filepath, 'utf-8');
+  const article = JSON.parse(content);
+
+  if (!article.attachments) {
+    article.attachments = [];
+  }
+
+  const attachment = {
+    id: Date.now().toString(),
+    filename: fileInfo.filename,
+    originalName: fileInfo.originalname,
+    mimetype: fileInfo.mimetype,
+    size: fileInfo.size,
+    uploadedAt: new Date().toISOString()
+  };
+
+  article.attachments.push(attachment);
+  await fs.writeFile(filepath, JSON.stringify(article, null, 2));
+
+  return { 
+    attachment,
+    title: article.title,
+    message: 'File attached successfully' 
+  };
+};
+
+const deleteAttachment = async (id, attachmentId) => {
+  const filename = `${id}.json`;
+  const filepath = path.join(DATA_DIR, filename);
+
+  try {
+    await fs.access(filepath);
+  } catch {
+    throw new Error('Article not found');
+  }
+
+  const content = await fs.readFile(filepath, 'utf-8');
+  const article = JSON.parse(content);
+
+  if (!article.attachments) {
+    throw new Error('Attachment not found');
+  }
+
+  const attachmentIndex = article.attachments.findIndex(a => a.id === attachmentId);
+  if (attachmentIndex === -1) {
+    throw new Error('Attachment not found');
+  }
+
+  const attachment = article.attachments[attachmentIndex];
+  const attachmentPath = path.join(config.uploadsDirectory, attachment.filename);
+
+  try {
+    await fs.unlink(attachmentPath);
+  } catch (err) {
+    console.error(`Failed to delete file: ${attachment.filename}`);
+  }
+
+  article.attachments.splice(attachmentIndex, 1);
+  await fs.writeFile(filepath, JSON.stringify(article, null, 2));
+
+  return { 
+    filename: attachment.originalName,
+    title: article.title,
+    message: 'Attachment deleted successfully' 
+  };
 };
 
 module.exports = {
@@ -109,5 +206,7 @@ module.exports = {
   getArticleById,
   createArticle,
   updateArticle,
-  deleteArticle
+  deleteArticle,
+  addAttachment,
+  deleteAttachment
 };
