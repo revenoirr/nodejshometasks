@@ -1,7 +1,6 @@
 const db = require('../models');
 const { Workspace, Article } = db;
 
-// Get all workspaces
 const getAllWorkspaces = async (includeInactive = false) => {
   const where = includeInactive ? {} : { isActive: true };
   
@@ -30,7 +29,6 @@ const getAllWorkspaces = async (includeInactive = false) => {
   }));
 };
 
-// Get workspace by ID
 const getWorkspaceById = async (id) => {
   const workspace = await Workspace.findByPk(id, {
     include: [{
