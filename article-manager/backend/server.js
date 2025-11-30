@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const config = require('./config/config');
+const db = require('./models');
 const articleRoutes = require('./routes/articles');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { ensureDirectoryExists } = require('./utils/fileUtils');
@@ -23,8 +24,21 @@ app.use((req, res, next) => {
 
 app.use('/articles', articleRoutes);
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/health', async (req, res) => {
+  try {
+    await db.sequelize.authenticate();
+    res.json({ 
+      status: 'ok', 
+      database: 'connected',
+      timestamp: new Date().toISOString() 
+    });
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'error', 
+      database: 'disconnected',
+      timestamp: new Date().toISOString() 
+    });
+  }
 });
 
 app.use(notFoundHandler);
@@ -33,7 +47,15 @@ app.use(errorHandler);
 
 const startServer = async () => {
   try {
-    await ensureDirectoryExists(config.dataDirectory);
+    await db.sequelize.authenticate();
+    console.log('✅ Database connection established successfully');
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('⚠️  Checking database schema...');
+      await db.sequelize.sync({ alter: false });
+      console.log('✅ Database schema is up to date');
+    }
+
     await ensureDirectoryExists(config.uploadsDirectory);
 
     initWebSocket(server);
@@ -43,7 +65,7 @@ const startServer = async () => {
       console.log(`✅ Server running successfully!`);
       console.log(`📍 HTTP: http://localhost:${PORT}`);
       console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
-      console.log(`📁 Data: ${config.dataDirectory}`);
+      console.log(`💾 Database: ${db.sequelize.config.database}`);
       console.log(`📎 Uploads: ${config.uploadsDirectory}`);
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log('=================================');
