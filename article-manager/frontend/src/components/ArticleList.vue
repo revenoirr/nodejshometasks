@@ -11,8 +11,15 @@
         :key="article.id" 
         class="article-card"
       >
+        <div v-if="article.workspace" class="workspace-badge" :style="{ background: article.workspace.color }">
+          {{ article.workspace.icon }} {{ article.workspace.name }}
+        </div>
         <h3>{{ article.title }}</h3>
         <p class="date">{{ formatDate(article.createdAt) }}</p>
+        <div class="article-meta">
+          <span class="meta-item">📎 {{ article.attachmentCount }}</span>
+          <span class="meta-item">💬 {{ article.commentCount }}</span>
+        </div>
         <div class="card-actions">
           <button @click="$emit('view', article.id)" class="btn-view">View</button>
           <button @click="$emit('edit', article.id)" class="btn-edit">Edit</button>
@@ -92,6 +99,16 @@ export default {
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
 }
 
+.workspace-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
 .article-card h3 {
   color: #333;
   margin-bottom: 10px;
@@ -102,6 +119,20 @@ export default {
   color: #999;
   font-size: 0.9rem;
   margin-bottom: 15px;
+}
+
+.article-meta {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 15px;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .card-actions {

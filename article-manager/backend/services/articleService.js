@@ -3,16 +3,31 @@ const path = require('path');
 const db = require('../models');
 const config = require('../config/config');
 
-const { Article, Attachment } = db;
+const { Article, Attachment, Workspace, Comment } = db;
 
-const getAllArticles = async () => {
+const getAllArticles = async (workspaceId = null) => {
+  const where = workspaceId ? { workspaceId } : {};
+  
   const articles = await Article.findAll({
-    attributes: ['id', 'title', 'slug', 'createdAt', 'updatedAt'],
-    include: [{
-      model: Attachment,
-      as: 'attachments',
-      attributes: ['id', 'originalName', 'mimetype', 'size']
-    }],
+    where,
+    attributes: ['id', 'title', 'slug', 'workspaceId', 'createdAt', 'updatedAt'],
+    include: [
+      {
+        model: Attachment,
+        as: 'attachments',
+        attributes: ['id', 'originalName', 'mimetype', 'size']
+      },
+      {
+        model: Workspace,
+        as: 'workspace',
+        attributes: ['id', 'name', 'slug', 'color', 'icon']
+      },
+      {
+        model: Comment,
+        as: 'comments',
+        attributes: ['id']
+      }
+    ],
     order: [['createdAt', 'DESC']]
   });
 
@@ -20,20 +35,49 @@ const getAllArticles = async () => {
     id: article.id,
     title: article.title,
     slug: article.slug,
+    workspace: article.workspace ? {
+      id: article.workspace.id,
+      name: article.workspace.name,
+      slug: article.workspace.slug,
+      color: article.workspace.color,
+      icon: article.workspace.icon
+    } : null,
     createdAt: article.createdAt,
     updatedAt: article.updatedAt,
-    attachmentCount: article.attachments.length
+    attachmentCount: article.attachments.length,
+    commentCount: article.comments.length
   }));
 };
 
 const getArticleById = async (id) => {
   const article = await Article.findByPk(id, {
-    include: [{
-      model: Attachment,
-      as: 'attachments',
-      attributes: ['id', 'filename', 'originalName', 'mimetype', 'size', 'path', 'createdAt'],
-      order: [['createdAt', 'ASC']]
-    }]
+    include: [
+      {
+        model: Attachment,
+        as: 'attachments',
+        attributes: ['id', 'filename', 'originalName', 'mimetype', 'size', 'path', 'createdAt'],
+        order: [['createdAt', 'ASC']]
+      },
+      {
+        model: Workspace,
+        as: 'workspace',
+        attributes: ['id', 'name', 'slug', 'color', 'icon']
+      },
+      {
+        model: Comment,
+        as: 'comments',
+        where: { parentCommentId: null },
+        required: false,
+        separate: true,
+        order: [['createdAt', 'DESC']],
+        include: [{
+          model: Comment,
+          as: 'replies',
+          separate: true,
+          order: [['createdAt', 'ASC']]
+        }]
+      }
+    ]
   });
 
   if (!article) {
@@ -45,6 +89,13 @@ const getArticleById = async (id) => {
     title: article.title,
     content: article.content,
     slug: article.slug,
+    workspace: article.workspace ? {
+      id: article.workspace.id,
+      name: article.workspace.name,
+      slug: article.workspace.slug,
+      color: article.workspace.color,
+      icon: article.workspace.icon
+    } : null,
     createdAt: article.createdAt,
     updatedAt: article.updatedAt,
     attachments: article.attachments.map(att => ({
@@ -54,11 +105,36 @@ const getArticleById = async (id) => {
       mimetype: att.mimetype,
       size: att.size,
       uploadedAt: att.createdAt
+    })),
+    comments: article.comments.map(comment => ({
+      id: comment.id,
+      authorName: comment.authorName,
+      authorEmail: comment.authorEmail,
+      content: comment.content,
+      isEdited: comment.isEdited,
+      createdAt: comment.createdAt,
+      updatedAt: comment.updatedAt,
+      replies: comment.replies ? comment.replies.map(reply => ({
+        id: reply.id,
+        authorName: reply.authorName,
+        authorEmail: reply.authorEmail,
+        content: reply.content,
+        isEdited: reply.isEdited,
+        createdAt: reply.createdAt,
+        updatedAt: reply.updatedAt
+      })) : []
     }))
   };
 };
 
-const createArticle = async (title, content) => {
+const createArticle = async (title, content, workspaceId = null) => {
+  if (workspaceId) {
+    const workspace = await Workspace.findByPk(workspaceId);
+    if (!workspace) {
+      throw new Error('Workspace not found');
+    }
+  }
+
   const baseSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   let slug = baseSlug;
   let counter = 1;
@@ -71,22 +147,31 @@ const createArticle = async (title, content) => {
   const article = await Article.create({
     title,
     content,
-    slug
+    slug,
+    workspaceId
   });
 
   return {
     id: article.id,
     title: article.title,
     slug: article.slug,
+    workspaceId: article.workspaceId,
     message: 'Article created successfully'
   };
 };
 
-const updateArticle = async (id, title, content) => {
+const updateArticle = async (id, title, content, workspaceId) => {
   const article = await Article.findByPk(id);
 
   if (!article) {
     throw new Error('Article not found');
+  }
+
+  if (workspaceId !== undefined && workspaceId !== null) {
+    const workspace = await Workspace.findByPk(workspaceId);
+    if (!workspace) {
+      throw new Error('Workspace not found');
+    }
   }
 
   let slug = article.slug;
@@ -94,7 +179,6 @@ const updateArticle = async (id, title, content) => {
     const baseSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     slug = baseSlug;
     let counter = 1;
-
     while (await Article.findOne({ where: { slug, id: { [db.Sequelize.Op.ne]: id } } })) {
       slug = `${baseSlug}-${counter}`;
       counter++;
@@ -104,13 +188,15 @@ const updateArticle = async (id, title, content) => {
   await article.update({
     title,
     content,
-    slug
+    slug,
+    workspaceId: workspaceId !== undefined ? workspaceId : article.workspaceId
   });
 
   return {
     id: article.id,
     title: article.title,
     slug: article.slug,
+    workspaceId: article.workspaceId,
     message: 'Article updated successfully'
   };
 };
@@ -199,7 +285,6 @@ const deleteAttachment = async (articleId, attachmentId) => {
     console.error(`Failed to delete file: ${attachment.filename}`, err);
   }
 
-  
   await attachment.destroy();
 
   return {

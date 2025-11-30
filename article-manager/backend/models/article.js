@@ -6,6 +6,11 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true,
       allowNull: false
     },
+    workspaceId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'workspace_id'
+    },
     title: {
       type: DataTypes.STRING(200),
       allowNull: false,
@@ -36,6 +41,9 @@ module.exports = (sequelize, DataTypes) => {
       },
       {
         fields: ['createdAt']
+      },
+      {
+        fields: ['workspace_id']
       }
     ]
   });

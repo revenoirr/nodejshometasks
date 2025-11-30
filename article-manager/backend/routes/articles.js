@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { body, param, validationResult } = require('express-validator');
 const articleController = require('../controllers/articleController');
-const upload = require('../middleware/uploadMiddleware');
+const uploadMiddleware = require('../middleware/uploadMiddleware');
 
 const validateArticle = [
   body('title').notEmpty().trim().isLength({ min: 1, max: 200 }),
@@ -10,13 +10,9 @@ const validateArticle = [
 ];
 
 const validateId = [
-  param('id').notEmpty().trim().escape()
+  param('id').notEmpty().trim().isUUID()
 ];
 
-const validateAttachmentId = [
-  param('id').notEmpty().trim().escape(),
-  param('attachmentId').notEmpty().trim().escape()
-];
 
 const checkValidation = (req, res, next) => {
   const errors = validationResult(req);
@@ -32,7 +28,8 @@ router.post('/', validateArticle, checkValidation, articleController.createArtic
 router.put('/:id', [...validateId, ...validateArticle], checkValidation, articleController.updateArticle);
 router.delete('/:id', validateId, checkValidation, articleController.deleteArticle);
 
-router.post('/:id/attachments', validateId, checkValidation, upload.single('file'), articleController.uploadAttachment);
-router.delete('/:id/attachments/:attachmentId', validateAttachmentId, checkValidation, articleController.deleteAttachment);
+
+router.post('/:id/attachments', validateId, checkValidation, uploadMiddleware.single('file'), articleController.uploadAttachment);
+router.delete('/:id/attachments/:attachmentId', validateId, param('attachmentId').isUUID(), checkValidation, articleController.deleteAttachment);
 
 module.exports = router;

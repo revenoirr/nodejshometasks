@@ -16,6 +16,14 @@
           />
         </div>
         <div class="form-group">
+          <label for="workspace">Workspace</label>
+          <WorkspaceSelector
+            :workspaces="workspaces"
+            v-model="localForm.workspaceId"
+            :show-label="false"
+          />
+        </div>
+        <div class="form-group">
           <label for="content">Content *</label>
           <div class="editor-toolbar">
             <button type="button" @click="formatText('bold')" title="Bold">
@@ -54,8 +62,13 @@
 </template>
 
 <script>
+import WorkspaceSelector from './WorkspaceSelector.vue';
+
 export default {
   name: 'ArticleForm',
+  components: {
+    WorkspaceSelector
+  },
   props: {
     initialData: {
       type: Object,
@@ -68,6 +81,10 @@ export default {
     submitting: {
       type: Boolean,
       default: false
+    },
+    workspaces: {
+      type: Array,
+      default: () => []
     }
   },
   emits: ['submit', 'cancel'],
@@ -75,7 +92,8 @@ export default {
     return {
       localForm: {
         title: this.initialData.title || '',
-        content: this.initialData.content || ''
+        content: this.initialData.content || '',
+        workspaceId: this.initialData.workspaceId || ''
       }
     };
   },
@@ -84,7 +102,8 @@ export default {
       handler(newData) {
         this.localForm = {
           title: newData.title || '',
-          content: newData.content || ''
+          content: newData.content || '',
+          workspaceId: newData.workspaceId || ''
         };
         this.$nextTick(() => {
           if (this.$refs.editor) {
@@ -121,7 +140,11 @@ export default {
       if (!this.localForm.title.trim() || !this.localForm.content.trim()) {
         return;
       }
-      this.$emit('submit', { ...this.localForm });
+      this.$emit('submit', { 
+        title: this.localForm.title,
+        content: this.localForm.content,
+        workspaceId: this.localForm.workspaceId || null
+      });
     }
   }
 };

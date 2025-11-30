@@ -24,6 +24,12 @@
         </button>
       </div>
 
+      <WorkspaceSelector 
+        :workspaces="workspaces"
+        :selected-workspace-id="selectedWorkspaceId"
+        @workspace-change="handleWorkspaceChange"
+      />
+
       <div v-if="alert.show" :class="['alert', alert.type]">
         {{ alert.message }}
       </div>
@@ -44,13 +50,15 @@
         @back="currentView = 'list'"
         @edit="editArticle"
         @delete="confirmDelete"
+        @upload="showUploadModal = true"
         @delete-attachment="confirmDeleteAttachment"
-        @upload-file="showUploadModal = true"
+        @refresh="() => viewArticle(selectedArticle.id)"
       />
 
       <ArticleForm
         v-if="currentView === 'create' || currentView === 'edit'"
         :initial-data="form"
+        :workspaces="workspaces"
         :is-editing="currentView === 'edit'"
         :submitting="submitting"
         @submit="submitArticle"
@@ -91,6 +99,7 @@ import ArticleForm from './components/ArticleForm.vue';
 import DeleteModal from './components/DeleteModal.vue';
 import UploadModal from './components/UploadModal.vue';
 import NotificationToast from './components/NotificationToast.vue';
+import WorkspaceSelector from './components/WorkspaceSelector.vue';
 
 const API_URL = 'http://localhost:3000';
 const WS_URL = 'ws://localhost:3000';
@@ -103,13 +112,16 @@ export default {
     ArticleForm,
     DeleteModal,
     UploadModal,
-    NotificationToast
+    NotificationToast,
+    WorkspaceSelector
   },
   data() {
     return {
       currentView: 'list',
       articles: [],
       selectedArticle: null,
+      workspaces: [],
+      selectedWorkspaceId: '',
       form: {
         title: '',
         content: ''
@@ -135,6 +147,7 @@ export default {
   },
   mounted() {
     this.fetchArticles();
+    this.fetchWorkspaces();
     this.connectWebSocket();
   },
   beforeUnmount() {
@@ -159,15 +172,32 @@ export default {
             
             if (data.type !== 'connection') {
               this.addNotification(data);
+              
+              // Handle workspace-related events
+              if (['workspace_created', 'workspace_updated', 'workspace_deleted'].includes(data.type)) {
+                this.fetchWorkspaces();
+              }
+              
+              // Handle article events
               if (this.currentView === 'list' && 
                   ['article_created', 'article_deleted'].includes(data.type)) {
                 this.fetchArticles();
               }
+              
+              // Handle article view updates
               if (this.currentView === 'view' && 
                   this.selectedArticle && 
                   data.data && 
                   data.data.articleId === this.selectedArticle.id) {
                 this.viewArticle(this.selectedArticle.id);
+              }
+              
+              // Handle comment events
+              if (['comment_added', 'comment_updated', 'comment_deleted'].includes(data.type)) {
+                // Refresh current article if viewing
+                if (this.currentView === 'view' && this.selectedArticle) {
+                  this.viewArticle(this.selectedArticle.id);
+                }
               }
             }
           } catch (err) {
@@ -211,10 +241,29 @@ export default {
       }
     },
 
+    async fetchWorkspaces() {
+      try {
+        const response = await fetch(`${API_URL}/workspaces`);
+        if (!response.ok) throw new Error('Failed to fetch workspaces');
+        this.workspaces = await response.json();
+      } catch (error) {
+        this.showAlert('Failed to load workspaces', 'error');
+      }
+    },
+
+    handleWorkspaceChange(workspaceId) {
+      this.selectedWorkspaceId = workspaceId;
+      this.fetchArticles();
+    },
+
     async fetchArticles() {
       this.loading = true;
       try {
-        const response = await fetch(`${API_URL}/articles`);
+        const url = this.selectedWorkspaceId 
+          ? `${API_URL}/articles?workspaceId=${this.selectedWorkspaceId}`
+          : `${API_URL}/articles`;
+        
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch articles');
         this.articles = await response.json();
       } catch (error) {

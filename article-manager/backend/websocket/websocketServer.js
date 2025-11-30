@@ -84,11 +84,79 @@ const notifyFileDeleted = (articleId, filename, title) => {
   });
 };
 
+// Add these notification functions:
+
+const notifyWorkspaceCreated = (workspace) => {
+  broadcast({
+    type: 'workspace_created',
+    message: `New workspace "${workspace.name}" created`,
+    data: workspace,
+    timestamp: new Date().toISOString()
+  });
+};
+
+const notifyWorkspaceUpdated = (workspace) => {
+  broadcast({
+    type: 'workspace_updated',
+    message: `Workspace "${workspace.name}" updated`,
+    data: workspace,
+    timestamp: new Date().toISOString()
+  });
+};
+
+const notifyWorkspaceDeleted = (workspaceName) => {
+  broadcast({
+    type: 'workspace_deleted',
+    message: `Workspace "${workspaceName}" deleted`,
+    data: { name: workspaceName },
+    timestamp: new Date().toISOString()
+  });
+};
+
+const notifyCommentAdded = (comment, articleTitle) => {
+  broadcast({
+    type: 'comment_added',
+    message: `${comment.authorName} commented on "${articleTitle}"`,
+    data: comment,
+    timestamp: new Date().toISOString()
+  });
+};
+
+const notifyCommentUpdated = (comment) => {
+  broadcast({
+    type: 'comment_updated',
+    message: `Comment updated`,
+    data: comment,
+    timestamp: new Date().toISOString()
+  });
+};
+
+const notifyCommentDeleted = (commentId) => {
+  broadcast({
+    type: 'comment_deleted',
+    message: `Comment deleted`,
+    data: { id: commentId },
+    timestamp: new Date().toISOString()
+  });
+};
+
 module.exports = {
   initWebSocket,
   notifyArticleCreated,
   notifyArticleUpdated,
   notifyArticleDeleted,
   notifyFileAttached,
-  notifyFileDeleted
+  notifyFileDeleted,
+  initWebSocket,
+  notifyArticleCreated,
+  notifyArticleUpdated,
+  notifyArticleDeleted,
+  notifyFileAttached,
+  notifyFileDeleted,
+  notifyWorkspaceCreated,
+  notifyWorkspaceUpdated,
+  notifyWorkspaceDeleted,
+  notifyCommentAdded,
+  notifyCommentUpdated,
+  notifyCommentDeleted
 };

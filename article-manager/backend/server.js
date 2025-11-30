@@ -4,6 +4,8 @@ const cors = require('cors');
 const config = require('./config/config');
 const db = require('./models');
 const articleRoutes = require('./routes/articles');
+const workspaceRoutes = require('./routes/workspaces');  // Add this
+const commentRoutes = require('./routes/comments');      // Add this
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { ensureDirectoryExists } = require('./utils/fileUtils');
 const { initWebSocket } = require('./websocket/websocketServer');
@@ -12,18 +14,23 @@ const app = express();
 const server = http.createServer(app);
 const PORT = config.port;
 
+// Middleware
 app.use(cors(config.cors));
 app.use(express.json());
-
 app.use('/uploads', express.static(config.uploadsDirectory));
 
+// Request logging
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
   next();
 });
 
+// ROUTES - MUST BE BEFORE ERROR HANDLERS
 app.use('/articles', articleRoutes);
+app.use('/workspaces', workspaceRoutes);  // Move here
+app.use('/comments', commentRoutes);      // Move here
 
+// Health check endpoint
 app.get('/health', async (req, res) => {
   try {
     await db.sequelize.authenticate();
@@ -41,10 +48,11 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// ERROR HANDLERS - MUST BE LAST
 app.use(notFoundHandler);
-
 app.use(errorHandler);
 
+// Start server
 const startServer = async () => {
   try {
     await db.sequelize.authenticate();
@@ -57,7 +65,6 @@ const startServer = async () => {
     }
 
     await ensureDirectoryExists(config.uploadsDirectory);
-
     initWebSocket(server);
     
     server.listen(PORT, () => {

@@ -3,9 +3,15 @@
     <button @click="$emit('back')" class="btn-back">← Back to List</button>
     <div v-if="loading" class="loading">Loading article...</div>
     <div v-else-if="article" class="article-content">
+      <!-- Workspace badge -->
+      <div v-if="article.workspace" class="workspace-badge" :style="{ background: article.workspace.color }">
+        {{ article.workspace.icon }} {{ article.workspace.name }}
+      </div>
+
       <h2>{{ article.title }}</h2>
       <p class="date">Created: {{ formatDate(article.createdAt) }}</p>
-      
+
+      <!-- Attachments section (existing) -->
       <div v-if="article.attachments && article.attachments.length > 0" class="attachments-section">
         <h3>📎 Attachments ({{ article.attachments.length }})</h3>
         <div class="attachments-grid">
@@ -14,25 +20,27 @@
             :key="attachment.id"
             class="attachment-card"
           >
-            <div class="attachment-preview" @click="openAttachment(attachment)">
-              <div v-if="isImage(attachment.mimetype)" class="image-preview">
-                <img :src="getAttachmentUrl(attachment.filename)" :alt="attachment.originalName" />
+            <a 
+              :href="`http://localhost:3000/uploads/${attachment.filename}`" 
+              target="_blank"
+              class="attachment-link"
+            >
+              <div v-if="isImage(attachment.mimetype)" class="attachment-preview">
+                <img 
+                  :src="`http://localhost:3000/uploads/${attachment.filename}`"
+                  :alt="attachment.originalName"
+                />
               </div>
-              <div v-else class="file-icon">
-                <span v-if="attachment.mimetype === 'application/pdf'">📄</span>
-                <span v-else>📎</span>
+              <div v-else class="attachment-icon">
+                {{ getFileIcon(attachment.mimetype) }}
               </div>
-            </div>
-            <div class="attachment-info">
-              <div class="attachment-name" :title="attachment.originalName">
-                {{ attachment.originalName }}
+              <div class="attachment-info">
+                <p class="filename">{{ attachment.originalName }}</p>
+                <p class="filesize">{{ formatFileSize(attachment.size) }}</p>
               </div>
-              <div class="attachment-meta">
-                {{ formatFileSize(attachment.size) }} • {{ formatDate(attachment.uploadedAt) }}
-              </div>
-            </div>
+            </a>
             <button 
-              @click="$emit('delete-attachment', attachment.id)" 
+              @click="$emit('delete-attachment', article.id, attachment.id)" 
               class="btn-delete-attachment"
               title="Delete attachment"
             >
@@ -42,22 +50,36 @@
         </div>
       </div>
 
+      <!-- Content -->
       <div class="content" v-html="article.content"></div>
 
+      <!-- Article actions -->
       <div class="article-actions">
-        <button @click="$emit('upload-file')" class="btn-upload">📎 Add Attachment</button>
         <button @click="$emit('edit', article.id)" class="btn-edit">Edit Article</button>
+        <button @click="$emit('upload', article.id)" class="btn-upload">📎 Add Attachment</button>
         <button @click="$emit('delete', article.id)" class="btn-delete">Delete Article</button>
       </div>
+
+      <!-- Comments Section - NEW -->
+      <CommentSection
+        :article-id="article.id"
+        :initial-comments="article.comments || []"
+        @comment-added="handleCommentAdded"
+        @comment-updated="handleCommentUpdated"
+        @comment-deleted="handleCommentDeleted"
+      />
     </div>
   </div>
 </template>
 
 <script>
-const API_URL = 'http://localhost:3000';
+import CommentSection from './CommentSection.vue';
 
 export default {
   name: 'ArticleView',
+  components: {
+    CommentSection
+  },
   props: {
     article: {
       type: Object,
@@ -68,7 +90,7 @@ export default {
       default: false
     }
   },
-  emits: ['back', 'edit', 'delete', 'delete-attachment', 'upload-file'],
+  emits: ['back', 'edit', 'delete', 'upload', 'delete-attachment', 'refresh'],
   methods: {
     formatDate(dateString) {
       const date = new Date(dateString);
@@ -78,21 +100,28 @@ export default {
         day: 'numeric'
       });
     },
-    formatFileSize(bytes) {
-      if (bytes === 0) return '0 Bytes';
-      const k = 1024;
-      const sizes = ['Bytes', 'KB', 'MB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-    },
     isImage(mimetype) {
       return mimetype && mimetype.startsWith('image/');
     },
-    getAttachmentUrl(filename) {
-      return `${API_URL}/uploads/${filename}`;
+    getFileIcon(mimetype) {
+      if (mimetype.includes('pdf')) return '📄';
+      if (mimetype.includes('word')) return '📝';
+      if (mimetype.includes('excel') || mimetype.includes('spreadsheet')) return '📊';
+      return '📎';
     },
-    openAttachment(attachment) {
-      window.open(this.getAttachmentUrl(attachment.filename), '_blank');
+    formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    },
+    handleCommentAdded() {
+      this.$emit('refresh');
+    },
+    handleCommentUpdated() {
+      this.$emit('refresh');
+    },
+    handleCommentDeleted() {
+      this.$emit('refresh');
     }
   }
 };
@@ -305,5 +334,16 @@ export default {
 
 .btn-delete:hover {
   background: #c82333;
+}
+
+.workspace-badge {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 20px;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 15px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 </style>
