@@ -24,10 +24,12 @@
         </button>
       </div>
 
+      <!-- Workspace selector только для списка статей -->
       <WorkspaceSelector 
+        v-if="currentView === 'list'"
         :workspaces="workspaces"
-        :selected-workspace-id="selectedWorkspaceId"
-        @workspace-change="handleWorkspaceChange"
+        v-model="selectedWorkspaceId"
+        @change="handleWorkspaceChange"
       />
 
       <div v-if="alert.show" :class="['alert', alert.type]">
@@ -47,12 +49,13 @@
         v-if="currentView === 'view'"
         :article="selectedArticle"
         :loading="loading"
-        @back="currentView = 'list'"
+        @back="backToList"
         @edit="editArticle"
         @delete="confirmDelete"
         @upload="showUploadModal = true"
         @delete-attachment="confirmDeleteAttachment"
-        @refresh="() => viewArticle(selectedArticle.id)"
+        @refresh="refreshCurrentArticle"
+        @load-version="loadArticleVersion"
       />
 
       <ArticleForm
@@ -124,7 +127,8 @@ export default {
       selectedWorkspaceId: '',
       form: {
         title: '',
-        content: ''
+        content: '',
+        workspaceId: ''
       },
       loading: false,
       submitting: false,
@@ -180,7 +184,7 @@ export default {
               
               // Handle article events
               if (this.currentView === 'list' && 
-                  ['article_created', 'article_deleted'].includes(data.type)) {
+                  ['article_created', 'article_deleted', 'article_updated'].includes(data.type)) {
                 this.fetchArticles();
               }
               
@@ -189,14 +193,13 @@ export default {
                   this.selectedArticle && 
                   data.data && 
                   data.data.articleId === this.selectedArticle.id) {
-                this.viewArticle(this.selectedArticle.id);
+                this.refreshCurrentArticle();
               }
               
               // Handle comment events
               if (['comment_added', 'comment_updated', 'comment_deleted'].includes(data.type)) {
-                // Refresh current article if viewing
                 if (this.currentView === 'view' && this.selectedArticle) {
-                  this.viewArticle(this.selectedArticle.id);
+                  this.refreshCurrentArticle();
                 }
               }
             }
@@ -247,11 +250,13 @@ export default {
         if (!response.ok) throw new Error('Failed to fetch workspaces');
         this.workspaces = await response.json();
       } catch (error) {
+        console.error('Error fetching workspaces:', error);
         this.showAlert('Failed to load workspaces', 'error');
       }
     },
 
     handleWorkspaceChange(workspaceId) {
+      // Обновляем selectedWorkspaceId и загружаем статьи для выбранного workspace
       this.selectedWorkspaceId = workspaceId;
       this.fetchArticles();
     },
@@ -259,38 +264,70 @@ export default {
     async fetchArticles() {
       this.loading = true;
       try {
-        const url = this.selectedWorkspaceId 
-          ? `${API_URL}/articles?workspaceId=${this.selectedWorkspaceId}`
-          : `${API_URL}/articles`;
+        // Строим URL с фильтром по workspace если выбран
+        let url = `${API_URL}/articles`;
+        if (this.selectedWorkspaceId) {
+          url += `?workspaceId=${this.selectedWorkspaceId}`;
+        }
         
         const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch articles');
         this.articles = await response.json();
       } catch (error) {
+        console.error('Error fetching articles:', error);
         this.showAlert('Failed to load articles', 'error');
       } finally {
         this.loading = false;
       }
     },
     
-    async viewArticle(id) {
+    async viewArticle(id, versionNumber = null) {
       this.loading = true;
       this.currentView = 'view';
       try {
-        const response = await fetch(`${API_URL}/articles/${id}`);
+        const url = versionNumber 
+          ? `${API_URL}/articles/${id}?version=${versionNumber}`
+          : `${API_URL}/articles/${id}`;
+        
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Article not found');
         this.selectedArticle = await response.json();
       } catch (error) {
+        console.error('Error loading article:', error);
         this.showAlert('Failed to load article', 'error');
         this.currentView = 'list';
       } finally {
         this.loading = false;
       }
     },
+
+    async loadArticleVersion(articleId, versionNumber) {
+      await this.viewArticle(articleId, versionNumber);
+    },
+
+    async refreshCurrentArticle() {
+      if (this.selectedArticle) {
+        const versionToLoad = this.selectedArticle.isCurrentVersion 
+          ? null 
+          : this.selectedArticle.currentVersion;
+        
+        await this.viewArticle(this.selectedArticle.id, versionToLoad);
+      }
+    },
+
+    backToList() {
+      this.currentView = 'list';
+      // Перезагружаем список статей с текущим фильтром
+      this.fetchArticles();
+    },
     
     showCreateForm() {
       this.currentView = 'create';
-      this.form = { title: '', content: '' };
+      this.form = { 
+        title: '', 
+        content: '', 
+        workspaceId: this.selectedWorkspaceId || '' // Используем текущий workspace если выбран
+      };
       this.editingId = null;
     },
     
@@ -301,13 +338,20 @@ export default {
         if (!response.ok) throw new Error('Article not found');
         const article = await response.json();
         
+        if (!article.isCurrentVersion) {
+          this.showAlert('You can only edit the current version of an article', 'error');
+          return;
+        }
+        
         this.form = {
           title: article.title,
-          content: article.content
+          content: article.content,
+          workspaceId: article.workspace ? article.workspace.id : ''
         };
         this.editingId = id;
         this.currentView = 'edit';
       } catch (error) {
+        console.error('Error loading article for editing:', error);
         this.showAlert('Failed to load article for editing', 'error');
       } finally {
         this.loading = false;
@@ -339,13 +383,19 @@ export default {
           throw new Error(error.error || 'Failed to save article');
         }
 
-        this.showAlert(
-          this.currentView === 'edit' ? 'Article updated successfully' : 'Article created successfully',
-          'success'
-        );
+        const result = await response.json();
+        
+        const message = this.currentView === 'edit' 
+          ? `Article updated successfully (Version ${result.version} created)`
+          : 'Article created successfully';
+        
+        this.showAlert(message, 'success');
         this.currentView = 'list';
+        // Сбрасываем фильтр workspace при возврате к списку
+        this.selectedWorkspaceId = '';
         this.fetchArticles();
       } catch (error) {
+        console.error('Error saving article:', error);
         this.showAlert(error.message, 'error');
       } finally {
         this.submitting = false;
@@ -368,7 +418,7 @@ export default {
           throw new Error(error.error || 'Failed to delete article');
         }
 
-        this.showAlert('Article deleted successfully', 'success');
+        this.showAlert('Article deleted successfully (all versions removed)', 'success');
         this.showDeleteModal = false;
         this.articleToDelete = null;
         
@@ -378,11 +428,11 @@ export default {
         
         this.fetchArticles();
       } catch (error) {
+        console.error('Error deleting article:', error);
         this.showAlert(error.message, 'error');
       }
     },
 
-    // File Upload Methods
     async uploadFile(file) {
       if (!this.selectedArticle) return;
 
@@ -407,16 +457,16 @@ export default {
         this.showAlert('File uploaded successfully', 'success');
         this.showUploadModal = false;
         
-        // Refresh article to show new attachment
-        await this.viewArticle(this.selectedArticle.id);
+        await this.refreshCurrentArticle();
       } catch (error) {
+        console.error('Error uploading file:', error);
         this.showAlert(error.message, 'error');
       } finally {
         this.uploading = false;
       }
     },
 
-    confirmDeleteAttachment(attachmentId) {
+    confirmDeleteAttachment(articleId, attachmentId) {
       this.attachmentToDelete = attachmentId;
       this.showDeleteAttachmentModal = true;
     },
@@ -439,17 +489,18 @@ export default {
         this.showDeleteAttachmentModal = false;
         this.attachmentToDelete = null;
         
-        // Refresh article
-        await this.viewArticle(this.selectedArticle.id);
+        await this.refreshCurrentArticle();
       } catch (error) {
+        console.error('Error deleting attachment:', error);
         this.showAlert(error.message, 'error');
       }
     },
     
     cancelForm() {
       this.currentView = 'list';
-      this.form = { title: '', content: '' };
+      this.form = { title: '', content: '', workspaceId: '' };
       this.editingId = null;
+      this.fetchArticles();
     },
     
     showAlert(message, type = 'success') {

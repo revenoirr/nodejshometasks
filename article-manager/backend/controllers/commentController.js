@@ -1,3 +1,4 @@
+const commentService = require('../services/commentService'); // <-- ДОБАВЛЕНА ЭТА СТРОКА
 const {
   notifyCommentAdded,
   notifyCommentUpdated,
@@ -37,10 +38,13 @@ const createComment = async (req, res) => {
       authorEmail,
       parentCommentId
     );
+    
+    // Отправляем успешный ответ
     res.status(201).json(result);
+    
+    // WebSocket уведомления (после ответа)
     const article = await require('../models').Article.findByPk(result.articleId);
-    notifyCommentAdded(result, article.title);
-    notifyCommentUpdated(result);
+    notifyCommentAdded(result, article ? article.title : 'Unknown Article');
   } catch (err) {
     console.error('Error creating comment:', err);
     if (err.message === 'Article not found' || err.message === 'Parent comment not found') {
@@ -58,7 +62,9 @@ const updateComment = async (req, res) => {
     const { content } = req.body;
     const result = await commentService.updateComment(req.params.id, content);
     res.json(result);
-    notifyCommentDeleted(req.params.id);
+    
+    // WebSocket уведомление
+    notifyCommentUpdated(result);
   } catch (err) {
     console.error('Error updating comment:', err);
     if (err.message === 'Comment not found') {
@@ -72,6 +78,9 @@ const deleteComment = async (req, res) => {
   try {
     await commentService.deleteComment(req.params.id);
     res.json({ message: 'Comment deleted successfully' });
+    
+    // WebSocket уведомление
+    notifyCommentDeleted(req.params.id);
   } catch (err) {
     console.error('Error deleting comment:', err);
     if (err.message === 'Comment not found') {

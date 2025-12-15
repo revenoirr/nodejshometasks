@@ -5,7 +5,7 @@
     <!-- Main comment form -->
     <CommentForm
       :article-id="articleId"
-      @submit="handleAddComment"
+      @submit="handleCommentSuccess"
     />
 
     <!-- Comments list -->
@@ -30,7 +30,7 @@
         :article-id="articleId"
         :parent-comment-id="replyingTo"
         :is-reply="true"
-        @submit="handleAddReply"
+        @submit="handleReplySuccess"
         @cancel="replyingTo = null"
       />
     </div>
@@ -70,12 +70,6 @@ export default {
       this.comments.forEach(comment => {
         if (comment.replies) {
           count += comment.replies.length;
-          // Count nested replies
-          comment.replies.forEach(reply => {
-            if (reply.replies) {
-              count += reply.replies.length;
-            }
-          });
         }
       });
       return count;
@@ -87,25 +81,9 @@ export default {
     }
   },
   methods: {
-    async handleAddComment(commentData) {
-      try {
-        const response = await fetch('http://localhost:3000/comments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(commentData)
-        });
-
-        if (!response.ok) throw new Error('Failed to add comment');
-
-        const result = await response.json();
-        this.$emit('comment-added', result);
-
-        // Refresh comments
-        await this.refreshComments();
-      } catch (error) {
-        console.error('Error adding comment:', error);
-        alert('Failed to add comment');
-      }
+    handleCommentSuccess() {
+      this.$emit('comment-added');
+      this.refreshComments();
     },
 
     handleReply(commentId) {
@@ -119,28 +97,11 @@ export default {
       });
     },
 
-    async handleAddReply(commentData) {
-      try {
-        const response = await fetch('http://localhost:3000/comments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(commentData)
-        });
-
-        if (!response.ok) throw new Error('Failed to add reply');
-
-        const result = await response.json();
-        this.$emit('comment-added', result);
-
-        // Clear reply form
-        this.replyingTo = null;
-
-        // Refresh comments
-        await this.refreshComments();
-      } catch (error) {
-        console.error('Error adding reply:', error);
-        alert('Failed to add reply');
-      }
+    handleReplySuccess() {
+      // CommentForm уже отправил запрос
+      this.replyingTo = null;
+      this.$emit('comment-added');
+      this.refreshComments();
     },
 
     async handleEdit({ id, content }) {
@@ -151,16 +112,16 @@ export default {
           body: JSON.stringify({ content })
         });
 
-        if (!response.ok) throw new Error('Failed to update comment');
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to update comment');
+        }
 
-        const result = await response.json();
-        this.$emit('comment-updated', result);
-
-        // Refresh comments
+        this.$emit('comment-updated');
         await this.refreshComments();
       } catch (error) {
         console.error('Error updating comment:', error);
-        alert('Failed to update comment');
+        alert(error.message || 'Failed to update comment');
       }
     },
 
@@ -174,15 +135,16 @@ export default {
           method: 'DELETE'
         });
 
-        if (!response.ok) throw new Error('Failed to delete comment');
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to delete comment');
+        }
 
-        this.$emit('comment-deleted', commentId);
-
-        // Refresh comments
+        this.$emit('comment-deleted');
         await this.refreshComments();
       } catch (error) {
         console.error('Error deleting comment:', error);
-        alert('Failed to delete comment');
+        alert(error.message || 'Failed to delete comment');
       }
     },
 

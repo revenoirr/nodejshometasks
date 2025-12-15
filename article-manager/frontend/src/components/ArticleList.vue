@@ -14,6 +14,12 @@
         <div v-if="article.workspace" class="workspace-badge" :style="{ background: article.workspace.color }">
           {{ article.workspace.icon }} {{ article.workspace.name }}
         </div>
+        
+        <!-- Version Badge -->
+        <div class="version-indicator" :title="`Version ${article.currentVersion}`">
+          📝 v{{ article.currentVersion }}
+        </div>
+        
         <h3>{{ article.title }}</h3>
         <p class="date">{{ formatDate(article.createdAt) }}</p>
         <div class="article-meta">
@@ -87,6 +93,7 @@ export default {
 }
 
 .article-card {
+  position: relative;
   border: 2px solid #e0e0e0;
   border-radius: 8px;
   padding: 20px;
@@ -109,10 +116,23 @@ export default {
   margin-bottom: 10px;
 }
 
+.version-indicator {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: #667eea;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .article-card h3 {
   color: #333;
   margin-bottom: 10px;
   font-size: 1.3rem;
+  padding-right: 50px;
 }
 
 .date {

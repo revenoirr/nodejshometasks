@@ -3,6 +3,45 @@
     <button @click="$emit('back')" class="btn-back">← Back to List</button>
     <div v-if="loading" class="loading">Loading article...</div>
     <div v-else-if="article" class="article-content">
+      <!-- Version Warning Banner -->
+      <div v-if="!article.isCurrentVersion" class="version-warning">
+        ⚠️ You are viewing an old version (v{{ article.currentVersion }} of {{ article.totalVersions }})
+        <button @click="loadCurrentVersion" class="btn-current">View Current Version</button>
+      </div>
+
+      <!-- Version Info Badge -->
+      <div class="version-info">
+        <span class="version-badge">
+          📝 Version {{ article.currentVersion }} of {{ article.totalVersions }}
+        </span>
+        <button 
+          v-if="article.totalVersions > 1" 
+          @click="showVersions = !showVersions" 
+          class="btn-toggle-versions"
+        >
+          {{ showVersions ? '▼ Hide' : '▶ Show' }} Version History
+        </button>
+      </div>
+
+      <!-- Version History Dropdown -->
+      <div v-if="showVersions && article.versions" class="versions-list">
+        <h3>📚 Version History</h3>
+        <div class="versions-grid">
+          <div 
+            v-for="version in article.versions" 
+            :key="version.versionNumber"
+            :class="['version-item', { 'current': version.isCurrent, 'selected': article.currentVersion === version.versionNumber }]"
+            @click="loadVersion(version.versionNumber)"
+          >
+            <div class="version-header">
+              <span class="version-number">v{{ version.versionNumber }}</span>
+              <span v-if="version.isCurrent" class="current-badge">Current</span>
+            </div>
+            <div class="version-date">{{ formatDate(version.createdAt) }}</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Workspace badge -->
       <div v-if="article.workspace" class="workspace-badge" :style="{ background: article.workspace.color }">
         {{ article.workspace.icon }} {{ article.workspace.name }}
@@ -11,7 +50,7 @@
       <h2>{{ article.title }}</h2>
       <p class="date">Created: {{ formatDate(article.createdAt) }}</p>
 
-      <!-- Attachments section (existing) -->
+      <!-- Attachments section -->
       <div v-if="article.attachments && article.attachments.length > 0" class="attachments-section">
         <h3>📎 Attachments ({{ article.attachments.length }})</h3>
         <div class="attachments-grid">
@@ -40,6 +79,7 @@
               </div>
             </a>
             <button 
+              v-if="article.isCurrentVersion"
               @click="$emit('delete-attachment', article.id, attachment.id)" 
               class="btn-delete-attachment"
               title="Delete attachment"
@@ -53,15 +93,21 @@
       <!-- Content -->
       <div class="content" v-html="article.content"></div>
 
-      <!-- Article actions -->
-      <div class="article-actions">
+      <!-- Article actions - only show for current version -->
+      <div v-if="article.isCurrentVersion" class="article-actions">
         <button @click="$emit('edit', article.id)" class="btn-edit">Edit Article</button>
         <button @click="$emit('upload', article.id)" class="btn-upload">📎 Add Attachment</button>
         <button @click="$emit('delete', article.id)" class="btn-delete">Delete Article</button>
       </div>
 
-      <!-- Comments Section - NEW -->
+      <!-- Read-only notice for old versions -->
+      <div v-else class="readonly-notice">
+        <p>🔒 This is a read-only version. To make changes, switch to the current version.</p>
+      </div>
+
+      <!-- Comments Section -->
       <CommentSection
+        v-if="article.isCurrentVersion"
         :article-id="article.id"
         :initial-comments="article.comments || []"
         @comment-added="handleCommentAdded"
@@ -90,14 +136,21 @@ export default {
       default: false
     }
   },
-  emits: ['back', 'edit', 'delete', 'upload', 'delete-attachment', 'refresh'],
+  emits: ['back', 'edit', 'delete', 'upload', 'delete-attachment', 'refresh', 'load-version'],
+  data() {
+    return {
+      showVersions: false
+    };
+  },
   methods: {
     formatDate(dateString) {
       const date = new Date(dateString);
       return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
       });
     },
     isImage(mimetype) {
@@ -113,6 +166,12 @@ export default {
       if (bytes < 1024) return bytes + ' B';
       if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
       return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    },
+    loadVersion(versionNumber) {
+      this.$emit('load-version', this.article.id, versionNumber);
+    },
+    loadCurrentVersion() {
+      this.$emit('load-version', this.article.id, null);
     },
     handleCommentAdded() {
       this.$emit('refresh');
@@ -148,6 +207,155 @@ export default {
 
 .btn-back:hover {
   background: #5a6268;
+}
+
+.version-warning {
+  background: #fff3cd;
+  border: 2px solid #ffc107;
+  border-radius: 8px;
+  padding: 15px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 500;
+  color: #856404;
+}
+
+.btn-current {
+  background: #ffc107;
+  color: #333;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.btn-current:hover {
+  background: #e0a800;
+}
+
+.version-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.version-badge {
+  background: #667eea;
+  color: white;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.btn-toggle-versions {
+  background: #6c757d;
+  color: white;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.3s;
+}
+
+.btn-toggle-versions:hover {
+  background: #5a6268;
+}
+
+.versions-list {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.versions-list h3 {
+  margin-bottom: 15px;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.versions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.version-item {
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.version-item:hover {
+  border-color: #667eea;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+}
+
+.version-item.selected {
+  border-color: #667eea;
+  background: #f0f3ff;
+}
+
+.version-item.current {
+  border-color: #28a745;
+}
+
+.version-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.version-number {
+  font-weight: 700;
+  color: #333;
+  font-size: 1rem;
+}
+
+.current-badge {
+  background: #28a745;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.version-date {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.readonly-notice {
+  background: #e9ecef;
+  border: 2px dashed #6c757d;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  margin-top: 30px;
+}
+
+.readonly-notice p {
+  margin: 0;
+  color: #495057;
+  font-weight: 500;
+  font-size: 1.1rem;
 }
 
 .loading {
@@ -215,21 +423,23 @@ export default {
   background: #f5f5f5;
 }
 
-.image-preview img {
+.attachment-preview img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.file-icon {
+.attachment-icon {
   font-size: 3rem;
+  text-align: center;
+  padding: 30px 0;
 }
 
 .attachment-info {
   padding: 10px;
 }
 
-.attachment-name {
+.filename {
   font-weight: 500;
   color: #333;
   font-size: 0.9rem;
@@ -239,7 +449,7 @@ export default {
   margin-bottom: 4px;
 }
 
-.attachment-meta {
+.filesize {
   font-size: 0.75rem;
   color: #999;
 }

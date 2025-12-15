@@ -3,7 +3,7 @@ const path = require('path');
 const db = require('../models');
 const config = require('../config/config');
 
-const { Article, Attachment, Workspace, Comment } = db;
+const { Article, ArticleVersion, Attachment, Workspace, Comment } = db;
 
 const getAllArticles = async (workspaceId = null) => {
   const where = workspaceId ? { workspaceId } : {};
@@ -26,6 +26,14 @@ const getAllArticles = async (workspaceId = null) => {
         model: Comment,
         as: 'comments',
         attributes: ['id']
+      },
+      {
+        model: ArticleVersion,
+        as: 'versions',
+        attributes: ['versionNumber'],
+        separate: true,
+        order: [['versionNumber', 'DESC']],
+        limit: 1
       }
     ],
     order: [['createdAt', 'DESC']]
@@ -45,11 +53,12 @@ const getAllArticles = async (workspaceId = null) => {
     createdAt: article.createdAt,
     updatedAt: article.updatedAt,
     attachmentCount: article.attachments.length,
-    commentCount: article.comments.length
+    commentCount: article.comments.length,
+    currentVersion: article.versions.length > 0 ? article.versions[0].versionNumber : 1
   }));
 };
 
-const getArticleById = async (id) => {
+const getArticleById = async (id, versionNumber = null) => {
   const article = await Article.findByPk(id, {
     include: [
       {
@@ -84,10 +93,39 @@ const getArticleById = async (id) => {
     throw new Error('Article not found');
   }
 
+  // Получаем нужную версию или текущую
+  let version;
+  if (versionNumber !== null) {
+    version = await ArticleVersion.findOne({
+      where: {
+        articleId: id,
+        versionNumber: versionNumber
+      }
+    });
+    
+    if (!version) {
+      throw new Error('Version not found');
+    }
+  } else {
+    version = await ArticleVersion.findOne({
+      where: {
+        articleId: id,
+        isCurrent: true
+      }
+    });
+  }
+
+  // Получаем информацию о всех версиях для отображения
+  const allVersions = await ArticleVersion.findAll({
+    where: { articleId: id },
+    attributes: ['id', 'versionNumber', 'isCurrent', 'createdAt'],
+    order: [['versionNumber', 'DESC']]
+  });
+
   return {
     id: article.id,
-    title: article.title,
-    content: article.content,
+    title: version ? version.title : article.title,
+    content: version ? version.content : article.content,
     slug: article.slug,
     workspace: article.workspace ? {
       id: article.workspace.id,
@@ -98,6 +136,14 @@ const getArticleById = async (id) => {
     } : null,
     createdAt: article.createdAt,
     updatedAt: article.updatedAt,
+    currentVersion: version ? version.versionNumber : 1,
+    isCurrentVersion: version ? version.isCurrent : true,
+    totalVersions: allVersions.length,
+    versions: allVersions.map(v => ({
+      versionNumber: v.versionNumber,
+      isCurrent: v.isCurrent,
+      createdAt: v.createdAt
+    })),
     attachments: article.attachments.map(att => ({
       id: att.id,
       filename: att.filename,
@@ -144,18 +190,33 @@ const createArticle = async (title, content, workspaceId = null) => {
     counter++;
   }
 
-  const article = await Article.create({
-    title,
-    content,
-    slug,
-    workspaceId
+  // Используем транзакцию для создания статьи и первой версии
+  const result = await db.sequelize.transaction(async (t) => {
+    const article = await Article.create({
+      title,
+      content,
+      slug,
+      workspaceId
+    }, { transaction: t });
+
+    // Создаем первую версию
+    await ArticleVersion.create({
+      articleId: article.id,
+      versionNumber: 1,
+      title: article.title,
+      content: article.content,
+      isCurrent: true
+    }, { transaction: t });
+
+    return article;
   });
 
   return {
-    id: article.id,
-    title: article.title,
-    slug: article.slug,
-    workspaceId: article.workspaceId,
+    id: result.id,
+    title: result.title,
+    slug: result.slug,
+    workspaceId: result.workspaceId,
+    version: 1,
     message: 'Article created successfully'
   };
 };
@@ -185,11 +246,43 @@ const updateArticle = async (id, title, content, workspaceId) => {
     }
   }
 
-  await article.update({
-    title,
-    content,
-    slug,
-    workspaceId: workspaceId !== undefined ? workspaceId : article.workspaceId
+  // Используем транзакцию для создания новой версии
+  const result = await db.sequelize.transaction(async (t) => {
+    // Обновляем основную статью
+    await article.update({
+      title,
+      content,
+      slug,
+      workspaceId: workspaceId !== undefined ? workspaceId : article.workspaceId
+    }, { transaction: t });
+
+    // Находим текущую максимальную версию
+    const maxVersion = await ArticleVersion.max('versionNumber', {
+      where: { articleId: id },
+      transaction: t
+    });
+
+    const newVersionNumber = (maxVersion || 0) + 1;
+
+    // Помечаем все предыдущие версии как не текущие
+    await ArticleVersion.update(
+      { isCurrent: false },
+      { 
+        where: { articleId: id },
+        transaction: t 
+      }
+    );
+
+    // Создаем новую версию
+    await ArticleVersion.create({
+      articleId: id,
+      versionNumber: newVersionNumber,
+      title,
+      content,
+      isCurrent: true
+    }, { transaction: t });
+
+    return { newVersionNumber };
   });
 
   return {
@@ -197,7 +290,33 @@ const updateArticle = async (id, title, content, workspaceId) => {
     title: article.title,
     slug: article.slug,
     workspaceId: article.workspaceId,
-    message: 'Article updated successfully'
+    version: result.newVersionNumber,
+    message: 'Article updated successfully (new version created)'
+  };
+};
+
+const getArticleVersions = async (articleId) => {
+  const article = await Article.findByPk(articleId);
+  
+  if (!article) {
+    throw new Error('Article not found');
+  }
+
+  const versions = await ArticleVersion.findAll({
+    where: { articleId },
+    attributes: ['id', 'versionNumber', 'title', 'isCurrent', 'createdAt', 'updatedAt'],
+    order: [['versionNumber', 'DESC']]
+  });
+
+  return {
+    articleId,
+    articleTitle: article.title,
+    versions: versions.map(v => ({
+      versionNumber: v.versionNumber,
+      title: v.title,
+      isCurrent: v.isCurrent,
+      createdAt: v.createdAt
+    }))
   };
 };
 
@@ -224,6 +343,7 @@ const deleteArticle = async (id) => {
     }
   }
 
+  // Версии удалятся автоматически благодаря CASCADE
   await article.destroy();
 
   return { title: article.title };
@@ -300,6 +420,7 @@ module.exports = {
   createArticle,
   updateArticle,
   deleteArticle,
+  getArticleVersions,
   addAttachment,
   deleteAttachment
 };

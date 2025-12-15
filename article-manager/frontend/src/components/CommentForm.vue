@@ -76,30 +76,56 @@ export default {
   },
   methods: {
     async handleSubmit() {
+      // Валидация
       if (!this.form.authorName.trim() || !this.form.content.trim()) {
+        alert('Name and comment are required');
         return;
       }
 
       this.submitting = true;
 
-      const commentData = {
-        articleId: this.articleId,
-        authorName: this.form.authorName,
-        content: this.form.content,
-        authorEmail: this.form.authorEmail || null,
-        parentCommentId: this.parentCommentId
-      };
+      try {
+        const commentData = {
+          articleId: this.articleId,
+          authorName: this.form.authorName.trim(),
+          content: this.form.content.trim(),
+          // Если email пустой, не отправляем его вообще (а не null)
+          ...(this.form.authorEmail && this.form.authorEmail.trim() && { 
+            authorEmail: this.form.authorEmail.trim() 
+          }),
+          ...(this.parentCommentId && { parentCommentId: this.parentCommentId })
+        };
 
-      this.$emit('submit', commentData);
+        // Отправляем данные напрямую здесь вместо emit
+        const response = await fetch('http://localhost:3000/comments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(commentData)
+        });
 
-      // Reset form
-      this.form = {
-        authorName: '',
-        authorEmail: '',
-        content: ''
-      };
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to post comment');
+        }
 
-      this.submitting = false;
+        const result = await response.json();
+        
+        // Сбрасываем форму только после успешной отправки
+        this.form = {
+          authorName: '',
+          authorEmail: '',
+          content: ''
+        };
+
+        // Уведомляем родителя об успехе
+        this.$emit('submit', result);
+
+      } catch (error) {
+        console.error('Error posting comment:', error);
+        alert(error.message || 'Failed to post comment. Please try again.');
+      } finally {
+        this.submitting = false;
+      }
     }
   }
 };
