@@ -1,86 +1,60 @@
 const express = require('express');
-const http = require('http');
 const cors = require('cors');
-const config = require('./config/config');
+const path = require('path');
+const http = require('http');
 const db = require('./models');
-const articleRoutes = require('./routes/articles');
-const workspaceRoutes = require('./routes/workspaces');  // Add this
-const commentRoutes = require('./routes/comments');      // Add this
-const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
-const { ensureDirectoryExists } = require('./utils/fileUtils');
+const config = require('./config/config');
 const { initWebSocket } = require('./websocket/websocketServer');
+
+// Middleware
+const { errorHandler } = require('./middleware/errorHandler');
+const { authMiddleware } = require('./middleware/authMiddleware');
+
+
+// Routes
+const articleRoutes = require('./routes/articles');
+const commentRoutes = require('./routes/comments');
+const workspaceRoutes = require('./routes/workspaces');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 const server = http.createServer(app);
-const PORT = config.port;
 
-// Middleware
-app.use(cors(config.cors));
+initWebSocket(server);
+
+app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(config.uploadsDirectory));
+app.use(express.urlencoded({ extended: true }));
 
-// Request logging
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-  next();
+app.use('/uploads', express.static(config.uploadsDirectory || path.join(__dirname, 'uploads')));
+
+app.use('/auth', authRoutes);
+
+app.use('/articles', authMiddleware, articleRoutes);
+app.use('/comments', authMiddleware, commentRoutes);
+app.use('/workspaces', authMiddleware, workspaceRoutes);
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ROUTES - MUST BE BEFORE ERROR HANDLERS
-app.use('/articles', articleRoutes);
-app.use('/workspaces', workspaceRoutes);  // Move here
-app.use('/comments', commentRoutes);      // Move here
-
-// Health check endpoint
-app.get('/health', async (req, res) => {
-  try {
-    await db.sequelize.authenticate();
-    res.json({ 
-      status: 'ok', 
-      database: 'connected',
-      timestamp: new Date().toISOString() 
-    });
-  } catch (error) {
-    res.status(503).json({ 
-      status: 'error', 
-      database: 'disconnected',
-      timestamp: new Date().toISOString() 
-    });
-  }
-});
-
-// ERROR HANDLERS - MUST BE LAST
-app.use(notFoundHandler);
 app.use(errorHandler);
 
-// Start server
-const startServer = async () => {
-  try {
-    await db.sequelize.authenticate();
-    console.log('✅ Database connection established successfully');
+const PORT = process.env.PORT || 3000;
 
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('⚠️  Checking database schema...');
-      await db.sequelize.sync({ alter: false });
-      console.log('✅ Database schema is up to date');
-    }
-
-    await ensureDirectoryExists(config.uploadsDirectory);
-    initWebSocket(server);
+db.sequelize.authenticate()
+  .then(() => {
+    console.log('✅ Database connection established successfully.');
     
     server.listen(PORT, () => {
-      console.log('=================================');
-      console.log(`✅ Server running successfully!`);
-      console.log(`📍 HTTP: http://localhost:${PORT}`);
-      console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
-      console.log(`💾 Database: ${db.sequelize.config.database}`);
-      console.log(`📎 Uploads: ${config.uploadsDirectory}`);
-      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log('=================================');
+      console.log(`🚀 Server is running on http://localhost:${PORT}`);
+      console.log(`📁 Uploads directory: ${config.uploadsDirectory || path.join(__dirname, 'uploads')}`);
+      console.log('🔒 Protected routes require JWT authentication');
     });
-  } catch (err) {
-    console.error('❌ Failed to start server:', err);
+  })
+  .catch(err => {
+    console.error('❌ Unable to connect to the database:', err);
     process.exit(1);
-  }
-};
+  });
 
-startServer();
+module.exports = { app, server };

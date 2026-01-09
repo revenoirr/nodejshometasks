@@ -29,14 +29,12 @@ const db = {};
 db.Sequelize = Sequelize;
 db.sequelize = sequelize;
 
-// Загружаем все модели
 db.Workspace = require('./workspace')(sequelize, Sequelize);
 db.Article = require('./article')(sequelize, Sequelize);
 db.Attachment = require('./attachment')(sequelize, Sequelize);
 db.Comment = require('./comment')(sequelize, Sequelize);
-db.ArticleVersion = require('./articleVersion')(sequelize, Sequelize); // <-- ДОБАВЬ ЭТУ СТРОКУ
+db.ArticleVersion = require('./articleVersion')(sequelize, Sequelize); 
 
-// Workspace associations
 db.Workspace.hasMany(db.Article, {
   foreignKey: 'workspaceId',
   as: 'articles',
@@ -48,7 +46,6 @@ db.Article.belongsTo(db.Workspace, {
   as: 'workspace'
 });
 
-// Article - Attachment associations
 db.Article.hasMany(db.Attachment, {
   foreignKey: 'articleId',
   as: 'attachments',
@@ -60,7 +57,6 @@ db.Attachment.belongsTo(db.Article, {
   as: 'article'
 });
 
-// Article - Comment associations
 db.Article.hasMany(db.Comment, {
   foreignKey: 'articleId',
   as: 'comments',
@@ -72,7 +68,6 @@ db.Comment.belongsTo(db.Article, {
   as: 'article'
 });
 
-// Comment - Reply associations
 db.Comment.hasMany(db.Comment, {
   as: 'replies',
   foreignKey: 'parentCommentId',
@@ -84,7 +79,6 @@ db.Comment.belongsTo(db.Comment, {
   foreignKey: 'parentCommentId'
 });
 
-// Article - ArticleVersion associations
 db.Article.hasMany(db.ArticleVersion, {
   foreignKey: 'articleId',
   as: 'versions',
@@ -95,5 +89,7 @@ db.ArticleVersion.belongsTo(db.Article, {
   foreignKey: 'articleId',
   as: 'article'
 });
+
+db.User = require('./user')(sequelize, Sequelize);
 
 module.exports = db;
