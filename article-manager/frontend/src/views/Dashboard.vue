@@ -30,6 +30,14 @@
         >
           ➕ Create New
         </button>
+        <!-- NEW: User Management button (only for admins) -->
+        <button 
+          v-if="isAdmin"
+          @click="currentView = 'users'" 
+          :class="{ active: currentView === 'users' }"
+        >
+          👥 User Management
+        </button>
       </div>
 
       <WorkspaceSelector 
@@ -56,6 +64,7 @@
         v-if="currentView === 'view'"
         :article="selectedArticle"
         :loading="loading"
+        :can-edit="canEditArticle"
         @back="backToList"
         @edit="editArticle"
         @delete="confirmDelete"
@@ -73,6 +82,11 @@
         :submitting="submitting"
         @submit="submitArticle"
         @cancel="cancelForm"
+      />
+
+      <UserManagement
+        v-if="currentView === 'users'"
+        @show-alert="showAlert"
       />
 
       <DeleteModal
@@ -110,6 +124,7 @@ import DeleteModal from '../components/DeleteModal.vue';
 import UploadModal from '../components/UploadModal.vue';
 import NotificationToast from '../components/NotificationToast.vue';
 import WorkspaceSelector from '../components/WorkspaceSelector.vue';
+import UserManagement from '../views/UserManagement.vue';
 import authService from '../services/authService';
 
 const API_URL = 'http://localhost:3000';
@@ -124,7 +139,8 @@ export default {
     DeleteModal,
     UploadModal,
     NotificationToast,
-    WorkspaceSelector
+    WorkspaceSelector,
+    UserManagement
   },
   data() {
     return {
@@ -157,6 +173,17 @@ export default {
       wsConnected: false,
       notifications: []
     };
+  },
+  computed: {
+    isAdmin() {
+      return this.currentUser && this.currentUser.role === 'admin';
+    },
+    
+    canEditArticle() {
+      if (!this.selectedArticle) return false;
+      if (this.isAdmin) return true;
+      return this.selectedArticle.created_by === this.currentUser?.id;
+    }
   },
   mounted() {
     this.currentUser = authService.getUser();

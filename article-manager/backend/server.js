@@ -6,16 +6,14 @@ const db = require('./models');
 const config = require('./config/config');
 const { initWebSocket } = require('./websocket/websocketServer');
 
-// Middleware
 const { errorHandler } = require('./middleware/errorHandler');
 const { authMiddleware } = require('./middleware/authMiddleware');
 
-
-// Routes
 const articleRoutes = require('./routes/articles');
 const commentRoutes = require('./routes/comments');
 const workspaceRoutes = require('./routes/workspaces');
 const authRoutes = require('./routes/auth');
+const userManagementRoutes = require('./routes/users');
 
 const app = express();
 const server = http.createServer(app);
@@ -33,6 +31,7 @@ app.use('/auth', authRoutes);
 app.use('/articles', authMiddleware, articleRoutes);
 app.use('/comments', authMiddleware, commentRoutes);
 app.use('/workspaces', authMiddleware, workspaceRoutes);
+app.use('/users', userManagementRoutes); 
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -49,7 +48,8 @@ db.sequelize.authenticate()
     server.listen(PORT, () => {
       console.log(`🚀 Server is running on http://localhost:${PORT}`);
       console.log(`📁 Uploads directory: ${config.uploadsDirectory || path.join(__dirname, 'uploads')}`);
-      console.log('🔒 Protected routes require JWT authentication');
+      console.log(`🔒 Protected routes require JWT authentication`);
+      console.log(`👮 Admin routes: /users/* (requires admin role)`);
     });
   })
   .catch(err => {

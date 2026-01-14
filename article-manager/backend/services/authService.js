@@ -28,6 +28,7 @@ const register = async (email, password, name) => {
       id: user.id,
       email: user.email,
       name: user.name,
+      role: user.role,  
       createdAt: user.createdAt
     },
     token
@@ -35,7 +36,6 @@ const register = async (email, password, name) => {
 };
 
 const login = async (email, password) => {
-
   const user = await User.findOne({ where: { email } });
   if (!user) {
     throw new Error('Invalid email or password');
@@ -53,6 +53,7 @@ const login = async (email, password) => {
       id: user.id,
       email: user.email,
       name: user.name,
+      role: user.role,  
       createdAt: user.createdAt
     },
     token
@@ -69,6 +70,7 @@ const getCurrentUser = async (userId) => {
     id: user.id,
     email: user.email,
     name: user.name,
+    role: user.role,  
     createdAt: user.createdAt
   };
 };

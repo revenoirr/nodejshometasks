@@ -3,13 +3,11 @@
     <button @click="$emit('back')" class="btn-back">← Back to List</button>
     <div v-if="loading" class="loading">Loading article...</div>
     <div v-else-if="article" class="article-content">
-      <!-- Version Warning Banner -->
       <div v-if="!article.isCurrentVersion" class="version-warning">
         ⚠️ You are viewing an old version (v{{ article.currentVersion }} of {{ article.totalVersions }})
         <button @click="loadCurrentVersion" class="btn-current">View Current Version</button>
       </div>
 
-      <!-- Version Info Badge -->
       <div class="version-info">
         <span class="version-badge">
           📝 Version {{ article.currentVersion }} of {{ article.totalVersions }}
@@ -23,7 +21,6 @@
         </button>
       </div>
 
-      <!-- Version History Dropdown -->
       <div v-if="showVersions && article.versions" class="versions-list">
         <h3>📚 Version History</h3>
         <div class="versions-grid">
@@ -42,7 +39,6 @@
         </div>
       </div>
 
-      <!-- Workspace badge -->
       <div v-if="article.workspace" class="workspace-badge" :style="{ background: article.workspace.color }">
         {{ article.workspace.icon }} {{ article.workspace.name }}
       </div>
@@ -50,7 +46,6 @@
       <h2>{{ article.title }}</h2>
       <p class="date">Created: {{ formatDate(article.createdAt) }}</p>
 
-      <!-- Attachments section -->
       <div v-if="article.attachments && article.attachments.length > 0" class="attachments-section">
         <h3>📎 Attachments ({{ article.attachments.length }})</h3>
         <div class="attachments-grid">
@@ -90,22 +85,21 @@
         </div>
       </div>
 
-      <!-- Content -->
       <div class="content" v-html="article.content"></div>
 
-      <!-- Article actions - only show for current version -->
-      <div v-if="article.isCurrentVersion" class="article-actions">
+    <div v-if="article.isCurrentVersion" class="article-actions">
+      <template v-if="canEdit">
         <button @click="$emit('edit', article.id)" class="btn-edit">Edit Article</button>
-        <button @click="$emit('upload', article.id)" class="btn-upload">📎 Add Attachment</button>
         <button @click="$emit('delete', article.id)" class="btn-delete">Delete Article</button>
-      </div>
+      </template>
+      
+      <button @click="$emit('upload', article.id)" class="btn-upload">📎 Add Attachment</button>
+    </div>
 
-      <!-- Read-only notice for old versions -->
-      <div v-else class="readonly-notice">
-        <p>🔒 This is a read-only version. To make changes, switch to the current version.</p>
-      </div>
+    <div v-else class="readonly-notice">
+      <p>🔒 This is a read-only version. To make changes, switch to the current version.</p>
+    </div>
 
-      <!-- Comments Section -->
       <CommentSection
         v-if="article.isCurrentVersion"
         :article-id="article.id"
@@ -129,11 +123,15 @@ export default {
   props: {
     article: {
       type: Object,
-      default: null
+      required: true
     },
     loading: {
       type: Boolean,
       default: false
+    },
+    canEdit: {  
+      type: Boolean,
+      default: true
     }
   },
   emits: ['back', 'edit', 'delete', 'upload', 'delete-attachment', 'refresh', 'load-version'],

@@ -16,6 +16,11 @@ module.exports = (sequelize, DataTypes) => {
         isEmail: true
       }
     },
+    role: {
+      type: DataTypes.ENUM('user', 'admin'),
+      allowNull: false,
+      defaultValue: 'user'
+    },
     password: {
       type: DataTypes.STRING(255),
       allowNull: false
@@ -32,6 +37,9 @@ module.exports = (sequelize, DataTypes) => {
       {
         unique: true,
         fields: ['email']
+      },
+      {
+        fields: ['role']
       }
     ],
     hooks: {
@@ -52,6 +60,10 @@ module.exports = (sequelize, DataTypes) => {
 
   User.prototype.comparePassword = async function(candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
+  };
+
+  User.prototype.isAdmin = function() {
+    return this.role === 'admin';
   };
 
   User.prototype.toJSON = function() {

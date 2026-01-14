@@ -15,7 +15,6 @@
           {{ article.workspace.icon }} {{ article.workspace.name }}
         </div>
         
-        <!-- Version Badge -->
         <div class="version-indicator" :title="`Version ${article.currentVersion}`">
           📝 v{{ article.currentVersion }}
         </div>
@@ -28,8 +27,11 @@
         </div>
         <div class="card-actions">
           <button @click="$emit('view', article.id)" class="btn-view">View</button>
-          <button @click="$emit('edit', article.id)" class="btn-edit">Edit</button>
-          <button @click="$emit('delete', article.id)" class="btn-delete">Delete</button>
+          
+          <template v-if="canEditArticle(article)">
+            <button @click="$emit('edit', article.id)" class="btn-edit">Edit</button>
+            <button @click="$emit('delete', article.id)" class="btn-delete">Delete</button>
+          </template>
         </div>
       </div>
     </div>
@@ -58,6 +60,14 @@ export default {
         month: 'long',
         day: 'numeric'
       });
+    },
+    canEditArticle(article) {
+    const currentUser = this.$parent.currentUser;
+    if (!currentUser) return false;
+    
+    if (currentUser.role === 'admin') return true;
+    
+    return article.created_by === currentUser.id;
     }
   }
 };
