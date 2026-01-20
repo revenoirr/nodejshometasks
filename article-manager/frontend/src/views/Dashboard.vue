@@ -30,7 +30,6 @@
         >
           ➕ Create New
         </button>
-        <!-- NEW: User Management button (only for admins) -->
         <button 
           v-if="isAdmin"
           @click="currentView = 'users'" 
@@ -47,14 +46,25 @@
         @change="handleWorkspaceChange"
       />
 
+      <SearchBar
+        v-if="currentView === 'list'"
+        :searching="searching"
+        :search-results="searchResults"
+        :has-searched="hasSearched"
+        :last-search-query="lastSearchQuery"
+        @search="handleSearch"
+        @clear-search="clearSearch"
+        @select-article="viewArticle"
+      />
+
       <div v-if="alert.show" :class="['alert', alert.type]">
         {{ alert.message }}
       </div>
 
       <ArticleList
         v-if="currentView === 'list'"
-        :articles="articles"
-        :loading="loading"
+        :articles="displayArticles" 
+        :loading="loading || searching"
         @view="viewArticle"
         @edit="editArticle"
         @delete="confirmDelete"
@@ -122,6 +132,7 @@ import ArticleView from '../components/ArticleView.vue';
 import ArticleForm from '../components/ArticleForm.vue';
 import DeleteModal from '../components/DeleteModal.vue';
 import UploadModal from '../components/UploadModal.vue';
+import SearchBar from '../components/SearchBar.vue';
 import NotificationToast from '../components/NotificationToast.vue';
 import WorkspaceSelector from '../components/WorkspaceSelector.vue';
 import UserManagement from '../views/UserManagement.vue';
@@ -140,7 +151,8 @@ export default {
     UploadModal,
     NotificationToast,
     WorkspaceSelector,
-    UserManagement
+    UserManagement,
+    SearchBar
   },
   data() {
     return {
@@ -171,7 +183,12 @@ export default {
       editingId: null,
       ws: null,
       wsConnected: false,
-      notifications: []
+      notifications: [],
+      searching: false,
+      searchResults: [],
+      hasSearched: false,
+      lastSearchQuery: '',
+      isSearchMode: false
     };
   },
   computed: {
@@ -183,8 +200,13 @@ export default {
       if (!this.selectedArticle) return false;
       if (this.isAdmin) return true;
       return this.selectedArticle.created_by === this.currentUser?.id;
+    },
+
+    displayArticles() {
+     return this.isSearchMode ? this.searchResults : this.articles;
     }
   },
+  
   mounted() {
     this.currentUser = authService.getUser();
     this.fetchArticles();
@@ -590,13 +612,81 @@ export default {
     },
     
     showAlert(message, type = 'success') {
-      this.alert = { show: true, message, type };
+      this.alert.message = message;
+      this.alert.type = type;
+      this.alert.show = true;
+      
       setTimeout(() => {
         this.alert.show = false;
-      }, 4000);
+      }, 3000);
+    },
+    
+    async handleSearch(query) {
+    if (!query || query.trim().length < 2) {
+      this.clearSearch();
+      return;
+    }
+    
+    this.searching = true;
+    this.lastSearchQuery = query;
+    
+    try {
+      const params = new URLSearchParams({
+        q: query,
+        limit: 100
+      });
+
+      if (this.selectedWorkspaceId) {
+        params.append('workspaceId', this.selectedWorkspaceId);
+      }
+      
+      const response = await fetch(
+        `${API_URL}/search?${params.toString()}`,
+        {
+          headers: this.getAuthHeaders()
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error('Search failed');
+      }
+      
+      const data = await response.json();
+      
+      this.searchResults = data.articles;
+      this.isSearchMode = true;
+      this.hasSearched = true;
+      
+      console.log(`Found ${data.total} articles for query: "${query}"`);
+    } catch (error) {
+      console.error('Search error:', error);
+      this.showAlert('Search failed. Please try again.', 'error');
+      this.searchResults = [];
+    } finally {
+      this.searching = false;
+    }
+  },
+  
+  clearSearch() {
+    this.searchResults = [];
+    this.isSearchMode = false;
+    this.hasSearched = false;
+    this.lastSearchQuery = '';
+    this.searching = false;
+  },
+  
+  handleWorkspaceChange(workspaceId) {
+    this.selectedWorkspaceId = workspaceId;
+    
+    if (this.isSearchMode && this.lastSearchQuery) {
+      this.handleSearch(this.lastSearchQuery);
+    } else {
+      this.fetchArticles();
     }
   }
+}
 };
+
 </script>
 
 <style>

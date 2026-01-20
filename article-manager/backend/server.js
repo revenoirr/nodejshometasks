@@ -14,6 +14,7 @@ const commentRoutes = require('./routes/comments');
 const workspaceRoutes = require('./routes/workspaces');
 const authRoutes = require('./routes/auth');
 const userManagementRoutes = require('./routes/users');
+const searchRoutes = require('./routes/search'); 
 
 const app = express();
 const server = http.createServer(app);
@@ -31,7 +32,8 @@ app.use('/auth', authRoutes);
 app.use('/articles', authMiddleware, articleRoutes);
 app.use('/comments', authMiddleware, commentRoutes);
 app.use('/workspaces', authMiddleware, workspaceRoutes);
-app.use('/users', userManagementRoutes); 
+app.use('/users', userManagementRoutes);
+app.use('/search', searchRoutes); 
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -50,6 +52,7 @@ db.sequelize.authenticate()
       console.log(`📁 Uploads directory: ${config.uploadsDirectory || path.join(__dirname, 'uploads')}`);
       console.log(`🔒 Protected routes require JWT authentication`);
       console.log(`👮 Admin routes: /users/* (requires admin role)`);
+      console.log(`🔍 Search endpoint: /search (requires JWT)`);
     });
   })
   .catch(err => {
