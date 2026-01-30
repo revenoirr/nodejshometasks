@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const articleController = require('../controllers/articleController');
+const pdfController = require('../controllers/pdfController'); 
 const { authMiddleware } = require('../middleware/authMiddleware');
 const { canEditArticle } = require('../middleware/roleMiddleware');
 
@@ -9,6 +10,8 @@ router.use(authMiddleware);
 router.get('/', articleController.getAllArticles);
 
 router.get('/:id', articleController.getArticleById);
+
+router.get('/:id/export-pdf', pdfController.exportArticlePDF); 
 
 router.post('/', articleController.createArticle);
 

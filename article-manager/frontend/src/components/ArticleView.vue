@@ -87,18 +87,26 @@
 
       <div class="content" v-html="article.content"></div>
 
-    <div v-if="article.isCurrentVersion" class="article-actions">
-      <template v-if="canEdit">
-        <button @click="$emit('edit', article.id)" class="btn-edit">Edit Article</button>
-        <button @click="$emit('delete', article.id)" class="btn-delete">Delete Article</button>
-      </template>
-      
-      <button @click="$emit('upload', article.id)" class="btn-upload">📎 Add Attachment</button>
-    </div>
+      <div v-if="article.isCurrentVersion" class="article-actions">
+        <template v-if="canEdit">
+          <button @click="$emit('edit', article.id)" class="btn-edit">Edit Article</button>
+          <button @click="$emit('delete', article.id)" class="btn-delete">Delete Article</button>
+        </template>
+        
+        <button @click="$emit('upload', article.id)" class="btn-upload">📎 Add Attachment</button>
+        
+        <button 
+          @click="exportPDF" 
+          :disabled="exporting"
+          class="btn-export-pdf"
+        >
+          {{ exporting ? '⏳ Generating PDF...' : '📄 Export PDF' }}
+        </button>
+      </div>
 
-    <div v-else class="readonly-notice">
-      <p>🔒 This is a read-only version. To make changes, switch to the current version.</p>
-    </div>
+      <div v-else class="readonly-notice">
+        <p>🔒 This is a read-only version. To make changes, switch to the current version.</p>
+      </div>
 
       <CommentSection
         v-if="article.isCurrentVersion"
@@ -134,10 +142,11 @@ export default {
       default: true
     }
   },
-  emits: ['back', 'edit', 'delete', 'upload', 'delete-attachment', 'refresh', 'load-version'],
+  emits: ['back', 'edit', 'delete', 'upload', 'delete-attachment', 'refresh', 'load-version', 'show-alert'],
   data() {
     return {
-      showVersions: false
+      showVersions: false,
+      exporting: false
     };
   },
   methods: {
@@ -179,6 +188,55 @@ export default {
     },
     handleCommentDeleted() {
       this.$emit('refresh');
+    },
+    async exportPDF() {
+      this.exporting = true;
+      
+      try {
+        const token = localStorage.getItem('jwt_token');
+        
+        const response = await fetch(
+          `http://localhost:3000/articles/${this.article.id}/export-pdf`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+        
+        if (!response.ok) {
+          throw new Error('Failed to export PDF');
+        }
+        
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = 'article.pdf';
+        
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          }
+        }
+        
+        const blob = await response.blob();
+        
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        this.$emit('show-alert', 'PDF exported successfully!', 'success');
+      } catch (error) {
+        console.error('Error exporting PDF:', error);
+        this.$emit('show-alert', 'Failed to export PDF. Please try again.', 'error');
+      } finally {
+        this.exporting = false;
+      }
     }
   }
 };
@@ -542,6 +600,29 @@ export default {
 
 .btn-delete:hover {
   background: #c82333;
+}
+
+.btn-export-pdf {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s;
+  font-weight: 500;
+}
+
+.btn-export-pdf:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-export-pdf:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .workspace-badge {
